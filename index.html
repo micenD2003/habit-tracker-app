@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Habit Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --danger: #ef4444;
+      --success: #10b981;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      width: 100%;
+      max-width: 600px;
+    }
+    .card {
+      background-color: var(--card-bg);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+      margin-bottom: 20px;
+    }
+    h1, h2 { margin-top: 0; }
+    input, select, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 8px;
+      margin-bottom: 16px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: var(--text);
+      box-sizing: border-box;
+    }
+    button {
+      background-color: var(--primary);
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s;
+    }
+    button:hover { background-color: var(--primary-hover); }
+    .btn-danger { background-color: var(--danger); width: auto; padding: 6px 12px; margin: 0; }
+    .btn-toggle { background-color: var(--success); width: auto; padding: 6px 12px; margin: 0; }
+    .hidden { display: none; }
+    .habit-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      border-bottom: 1px solid #334155;
+    }
+    .habit-actions { display: flex; gap: 8px; }
+    .completed { text-decoration: line-through; opacity: 0.6; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Auth Section -->
+  <div id="auth-section" class="card">
+    <h2>Habit Tracker Login / Register</h2>
+    <input type="email" id="auth-email" placeholder="Email Address" required />
+    <input type="password" id="auth-password" placeholder="Password" required />
+    <button onclick="handleLogin()">Log In</button>
+    <button onclick="handleRegister()" style="background-color: transparent; border: 1px solid var(--primary);">Register</button>
+    <p id="auth-error" style="color: var(--danger); font-size: 0.9em;"></p>
+  </div>
+
+  <!-- Main App Section -->
+  <div id="app-section" class="card hidden">
+    <div class="header-bar">
+      <h1>My Habits</h1>
+      <button onclick="handleLogout()" style="width: auto; padding: 6px 12px; background: #475569;">Logout</button>
+    </div>
+
+    <!-- Create Habit Form -->
+    <form id="add-habit-form" onsubmit="handleAddHabit(event)">
+      <input type="text" id="habit-title" placeholder="New Habit Title (e.g., Read 20 mins)" required />
+      <select id="habit-category">
+        <option value="Health">Health</option>
+        <option value="Productivity">Productivity</option>
+        <option value="Personal">Personal</option>
+      </select>
+      <button type="submit">Add Habit</button>
+    </form>
+
+    <!-- Habits List -->
+    <div id="habits-list"></div>
+  </div>
+</div>
+
+<script>
+  // Initialize Supabase Client
+  const SUPABASE_URL = "https://dsvtmeyhowyjsjgxlpow.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_YbSqXlyYCH7k_V6uza3Njw_gu2anaXw";
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Auth State Listener
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (session) {
+      document.getElementById('auth-section').classList.add('hidden');
+      document.getElementById('app-section').classList.remove('hidden');
+      fetchHabits();
+    } else {
+      document.getElementById('auth-section').classList.remove('hidden');
+      document.getElementById('app-section').classList.add('hidden');
+    }
+  });
+
+  async function handleRegister() {
+    const email = document.getElementById('auth-email').value;
+    const password = document.getElementById('auth-password').value;
+    const { error } = await supabaseClient.auth.signUp({ email, password });
+    if (error) document.getElementById('auth-error').innerText = error.message;
+    else alert('Account created successfully! You may now log in.');
+  }
+
+  async function handleLogin() {
+    const email = document.getElementById('auth-email').value;
+    const password = document.getElementById('auth-password').value;
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) document.getElementById('auth-error').innerText = error.message;
+  }
+
+  async function handleLogout() {
+    await supabaseClient.auth.signOut();
+  }
+
+  async function fetchHabits() {
+    const { data: habits, error } = await supabaseClient.from('habits').select('*').order('created_at', { ascending: false });
+    if (error) return console.error(error);
+
+    const listElement = document.getElementById('habits-list');
+    listElement.innerHTML = '';
+    
+    habits.forEach(habit => {
+      const item = document.createElement('div');
+      item.className = 'habit-item';
+      item.innerHTML = `
+        <div>
+          <span class="${habit.completed ? 'completed' : ''}" style="font-weight: bold; font-size: 1.1em;">${habit.title}</span>
+          <span style="font-size: 0.8em; color: var(--text-muted); display: block;">${habit.category} | Streak: ${habit.streak} days</span>
+        </div>
+        <div class="habit-actions">
+          <button class="btn-toggle" onclick="toggleHabit('${habit.id}', ${habit.completed}, ${habit.streak})">
+            ${habit.completed ? 'Undo' : 'Complete'}
+          </button>
+          <button class="btn-danger" onclick="deleteHabit('${habit.id}')">Delete</button>
+        </div>
+      `;
+      listElement.appendChild(item);
+    });
+  }
+
+  async function handleAddHabit(event) {
+    event.preventDefault();
+    const title = document.getElementById('habit-title').value;
+    const category = document.getElementById('habit-category').value;
+    const user = (await supabaseClient.auth.getUser()).data.user;
+
+    const { error } = await supabaseClient.from('habits').insert([{ title, category, user_id: user.id }]);
+    if (error) alert(error.message);
+    else {
+      document.getElementById('habit-title').value = '';
+      fetchHabits();
+    }
+  }
+
+  async function toggleHabit(id, currentStatus, currentStreak) {
+    const newStreak = currentStatus ? Math.max(0, currentStreak - 1) : currentStreak + 1;
+    await supabaseClient.from('habits').update({ completed: !currentStatus, streak: newStreak }).eq('id', id);
+    fetchHabits();
+  }
+
+  async function deleteHabit(id) {
+    await supabaseClient.from('habits').delete().eq('id', id);
+    fetchHabits();
+  }
+</script>
+</body>
+</html>
